@@ -38,6 +38,12 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#ifdef DDRESCUE_USE_DVDREAD
+extern "C" {
+#include <dvdread/dvd_reader.h>
+}
+#endif
+
 #include "arg_parser.h"
 #include "rational.h"
 #include "block.h"
@@ -406,15 +412,50 @@ int do_rescue( const long long offset, Domain & domain,
                const char * const iname, const char * const oname,
                const char * const mapname, const int cluster,
                const int hardbs, const int o_direct_out, const int o_trunc,
-               const bool ask, const bool preallocate,
+               const bool ask, const bool dvd, const bool preallocate,
                const bool synchronous, const bool verify_input_size )
   {
+#ifdef DDRESCUE_USE_DVDREAD
+  const int ides = dvd ? 0 : open( iname, O_RDONLY | rb_opts.o_direct_in | O_BINARY );
+  dvd_reader_t *idvd = NULL;
+  long long isize;
+
+  if (dvd) {
+    idvd = DVDOpen(iname);
+
+    if (!idvd) {
+      show_error( "Can't open input DVD device", errno );
+      return 1;
+    }
+
+    // +1 because this returns the maximum linear block number, not the block count
+    isize = 2048 * (((long long)DVDGetMaxLB(idvd)) + 1);
+    if( isize < 0 ) {
+      show_error( "could not determine length of input DVD device" );
+      DVDClose(idvd);
+      return 1;
+    }
+  } else {
+    if( ides < 0 ) {
+      show_error( "Can't open input file", errno );
+      return 1;
+    }
+
+    isize = lseek( ides, 0, SEEK_END );
+    if( isize < 0 ) {
+      show_error( "Input file is not seekable." );
+      return 1;
+    }
+  }
+#else
   const int ides = open( iname, O_RDONLY | rb_opts.o_direct_in | O_BINARY );
   if( ides < 0 )
     { show_error( "Can't open input file", errno ); return 1; }
   long long isize = lseek( ides, 0, SEEK_END );
   if( isize < 0 )
     { show_error( "Input file is not seekable." ); return 1; }
+#endif // DDRESCUE_USE_DVDREAD
+
   if( test_domain )
     { const long long size = test_domain->end();
       if( isize <= 0 || isize > size ) isize = size; }
@@ -430,11 +471,17 @@ int do_rescue( const long long offset, Domain & domain,
       {
       show_error( "Can't verify input file size.\n"
                   "          Mapfile is unfinished or missing or size is invalid." );
+#ifdef DDRESCUE_USE_DVDREAD
+      if (idvd) DVDClose(idvd);
+#endif
       return 1;
       }
     if( rescuebook.mapfile_isize() != isize )
       {
       show_error( "Input file size differs from size calculated from mapfile." );
+#ifdef DDRESCUE_USE_DVDREAD
+      if (idvd) DVDClose(idvd);
+#endif
       return 1;
       }
     }
@@ -442,43 +489,89 @@ int do_rescue( const long long offset, Domain & domain,
     {
     if( rescuebook.complete_only && !rescuebook.mapfile_exists() )
       { show_error( "Nothing to complete; mapfile is missing or empty.", 0, true );
+#ifdef DDRESCUE_USE_DVDREAD
+        if (idvd) DVDClose(idvd);
+#endif
         return 1; }
     return empty_domain();
     }
   if( o_trunc && !rescuebook.blank() )
     {
     show_error( "Outfile truncation and mapfile input are incompatible.", 0, true );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
     return 1;
     }
-  if( rescuebook.read_only() ) return not_writable( mapname );
+  if( rescuebook.read_only() ) {
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return not_writable( mapname );
+  }
 
-  if( ask && !user_agrees_ids( rescuebook, iname, oname, ides ) ) return 1;
+  if( ask && !user_agrees_ids( rescuebook, iname, oname, ides ) ) {
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
 
   const int odes = open( oname, O_CREAT | O_WRONLY | o_direct_out |
                          o_trunc | O_BINARY, outmode );
-  if( odes < 0 )
-    { show_error( "Can't open output file", errno ); return 1; }
-  if( lseek( odes, 0, SEEK_SET ) )
-    { show_error( "Output file is not seekable." ); return 1; }
-  if( preallocate )
-    {
+  if( odes < 0 ) {
+    show_error( "Can't open output file", errno );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
+  if( lseek( odes, 0, SEEK_SET ) ) {
+    show_error( "Output file is not seekable." );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
+  if( preallocate ) {
 #if defined _POSIX_ADVISORY_INFO && _POSIX_ADVISORY_INFO > 0
     if( posix_fallocate( odes, rescuebook.domain().pos() + rescuebook.offset(),
-                         rescuebook.domain().size() ) != 0 )
-      { show_error( "Can't preallocate output file", errno ); return 1; }
+                         rescuebook.domain().size() ) != 0 ) {
+      show_error( "Can't preallocate output file", errno );
+#ifdef DDRESCUE_USE_DVDREAD
+      if (idvd) DVDClose(idvd);
+#endif
+      return 1;
+    }
 #else
     show_error( "warning: Preallocation not available." );
 #endif
     }
 
   if( rescuebook.filename() && !rescuebook.mapfile_exists() &&
-      !rescuebook.write_mapfile( 0, true ) )
-    { show_error( "Can't create mapfile", errno ); return 1; }
+      !rescuebook.write_mapfile( 0, true ) ) {
+    show_error( "Can't create mapfile", errno );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
 
-  if( !rate_logger.open_file() )
-    { show_error( "Can't open file for logging rates", errno ); return 1; }
-  if( !read_logger.open_file() )
-    { show_error( "Can't open file for logging reads", errno ); return 1; }
+  if( !rate_logger.open_file() ) {
+    show_error( "Can't open file for logging rates", errno );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
+
+  if( !read_logger.open_file() ) {
+    show_error( "Can't open file for logging reads", errno );
+#ifdef DDRESCUE_USE_DVDREAD
+    if (idvd) DVDClose(idvd);
+#endif
+    return 1;
+  }
 
   if( !ask ) about_to_copy( rescuebook, iname, oname, ides, false );
   if( verbosity >= 1 )
@@ -543,7 +636,12 @@ int do_rescue( const long long offset, Domain & domain,
       }
     std::fputc( '\n', stdout );
     }
+#ifdef DDRESCUE_USE_DVDREAD
+  if (dvd) return rescuebook.do_dvd_rescue( idvd, odes );
+  else return rescuebook.do_rescue( ides, odes );
+#else
   return rescuebook.do_rescue( ides, odes );
+#endif
   }
 
 } // end namespace
@@ -632,6 +730,7 @@ int main( const int argc, const char * const argv[] )
   const int default_hardbs = 512;
   const int max_hardbs = Rb_options::max_max_skipbs;
   int cluster = 0;
+  bool hardbs_at_default = true;
   int hardbs = default_hardbs;
   int o_direct_out = 0;			// O_DIRECT or 0
   int o_trunc = 0;			// O_TRUNC or 0
@@ -720,7 +819,7 @@ int main( const int argc, const char * const argv[] )
       {
       case 'a': rb_opts.min_read_rate = getnum( ptr, hardbs, 0 ); break;
       case 'A': rb_opts.try_again = true; break;
-      case 'b': hardbs = getnum( ptr, 0, 1, max_hardbs ); break;
+      case 'b': if (!hardbs_at_default) hardbs = getnum( ptr, 0, 1, max_hardbs ); hardbs_at_default = false; break;
       case 'B': format_num( 0, 0, -1 ); break;		// set binary prefixes
       case 'c': cluster = getnum( ptr, 0, 1, INT_MAX ); break;
       case 'C': rb_opts.complete_only = true; break;
@@ -768,7 +867,7 @@ int main( const int argc, const char * const argv[] )
       case 'Z': rb_opts.max_read_rate = getnum( ptr, hardbs, 1 ); break;
       case opt_ask: ask = true; break;
 #ifdef DDRESCUE_USE_DVDREAD
-      case opt_dvd: dvd = true; break;
+      case opt_dvd: dvd = true; if (hardbs_at_default) hardbs = 2048; break;
 #endif
       case opt_cpa: parse_cpass( arg, rb_opts ); break;
       case opt_pau: rb_opts.pause = parse_time_interval( ptr ); break;
@@ -809,6 +908,9 @@ int main( const int argc, const char * const argv[] )
       if( ask )
         { show_error( "Option '--ask' is incompatible with fill mode.", 0, true );
           return 1; }
+      if( dvd )
+        { show_error( "Option '--dvd' is incompatible with fill mode.", 0, true );
+          return 1; }
       if( rb_opts != Rb_options() || test_mode_mapfile_name ||
           verify_input_size || preallocate || o_trunc )
         show_error( "warning: Options -aACdeEHIJKlMnOpPrRStTuxX are ignored in fill mode." );
@@ -817,6 +919,9 @@ int main( const int argc, const char * const argv[] )
     case m_generate:
       if( ask )
         { show_error( "Option '--ask' is incompatible with generate mode.", 0, true );
+          return 1; }
+      if( dvd )
+        { show_error( "Option '--dvd' is incompatible with generate mode.", 0, true );
           return 1; }
       if( fb_opts != Fb_options() || rb_opts != Rb_options() || synchronous ||
           test_mode_mapfile_name || verify_input_size || preallocate ||
@@ -833,7 +938,7 @@ int main( const int argc, const char * const argv[] )
       return do_rescue( opos - ipos, domain,
                         test_mode_mapfile_name ? &test_domain : 0, rb_opts,
                         iname, oname, mapname, cluster, hardbs, o_direct_out,
-                        o_trunc, ask, preallocate, synchronous, verify_input_size );
+                        o_trunc, ask, dvd, preallocate, synchronous, verify_input_size );
       }
     }
   }

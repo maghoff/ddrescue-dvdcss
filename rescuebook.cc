@@ -30,6 +30,12 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#ifdef DDRESCUE_USE_DVDREAD
+extern "C" {
+#include <dvdread/dvd_reader.h>
+}
+#endif
+
 #include "block.h"
 #include "loggers.h"
 #include "mapbook.h"
@@ -103,7 +109,9 @@ int Rescuebook::copy_block( const Block & b, int & copied_size, int & error_size
   if( b.size() <= 0 ) internal_error( "bad size copying a Block." );
   if( !test_domain || test_domain->includes( b ) )
     {
-    if( o_direct_in )
+    // Due to block-at-a-time libdvdread access, use the odirect path
+    // for dvds
+    if( o_direct_in || dvd_ )
       {
       const int pre = b.pos() % hardbs();
       const int disp = b.end() % hardbs();
@@ -111,13 +119,23 @@ int Rescuebook::copy_block( const Block & b, int & copied_size, int & error_size
       const int size = pre + b.size() + post;
       if( size > iobuf_size() )
         internal_error( "(size > iobuf_size) copying a Block." );
+#ifdef DDRESCUE_USE_DVDREAD
+      if (dvd_) {
+        copied_size = readblock_dvdread( idvd_, idvd_nblocks, iobuf(), size, b.pos() - pre );
+      } else {
+        copied_size = readblock( ides_, iobuf(), size, b.pos() - pre );
+      }
+#else
       copied_size = readblock( ides_, iobuf(), size, b.pos() - pre );
+#endif
       copied_size -= std::min( pre, copied_size );
       if( copied_size > b.size() ) copied_size = b.size();
       if( pre > 0 && copied_size > 0 )
         std::memmove( iobuf(), iobuf() + pre, copied_size );
       }
-    else copied_size = readblock( ides_, iobuf(), b.size(), b.pos() );
+    else {
+      copied_size = readblock( ides_, iobuf(), b.size(), b.pos() );
+    }
     error_size = errno ? b.size() - copied_size : 0;
     if( errno == EINVAL )
       { final_msg( "Unaligned read error. Is sector size correct?" ); return 1; }
@@ -147,9 +165,17 @@ int Rescuebook::copy_block( const Block & b, int & copied_size, int & error_size
       { voe_ipos = b.pos(); std::memcpy( voe_buf, iobuf(), hardbs() ); }
     if( error_size > 0 )
       {
-      if( voe_ipos >= 0 )
-        {
-        const int size = readblock( ides_, iobuf_aux(), hardbs(), voe_ipos );
+      if( voe_ipos >= 0 ) {
+#ifdef DDRESCUE_USE_DVDREAD
+        int size;
+        if (dvd_) {
+          size = readblock_dvdread( idvd_, idvd_nblocks, iobuf_aux(), hardbs(), voe_ipos );
+        } else {
+          size = readblock( ides_, iobuf_aux(), hardbs(), voe_ipos );
+        }
+#else
+        int size = readblock( ides_, iobuf_aux(), hardbs(), voe_ipos );
+#endif
         if( size != hardbs() )
           { final_msg( "Input file no longer returns data", errno ); e_code |= 8; }
         else if( std::memcmp( voe_buf, iobuf_aux(), hardbs() ) != 0 )
@@ -298,7 +324,10 @@ int Rescuebook::fcopy_non_tried( const char * const msg, const int pass )
     int copied_size = 0, error_size = 0;
     const int retval = copy_and_update( b, copied_size, error_size, msg,
                                         copying, true, Sblock::non_trimmed );
-    if( retval ) return retval;
+    if( retval ) {
+      printf("got %d from copy_and_update()\n", retval);
+      return retval;
+    }
     update_rates();
     if( error_size > 0 && exit_on_error ) { e_code |= 2; return 1; }
     if( ( error_size > 0 || slow_read() ) && pos >= 0 )
@@ -747,12 +776,34 @@ Rescuebook::Rescuebook( const long long offset, const long long isize,
   }
 
 
+#ifdef DDRESCUE_USE_DVDREAD
+int Rescuebook::do_rescue( const int ides, const int odes ) {
+  return do_rescue_internal( false, ides, NULL, odes );
+}
+
+int Rescuebook::do_dvd_rescue( dvd_reader_t *idvd, const int odes ) {
+  return do_rescue_internal( true, -1, idvd, odes );
+}
+#endif
+
 // Return values: 1 I/O error, 0 OK.
 //
+#ifdef DDRESCUE_USE_DVDREAD
+int Rescuebook::do_rescue_internal( bool dvd, const int ides, dvd_reader_t *idvd, const int odes )
+#else
 int Rescuebook::do_rescue( const int ides, const int odes )
+#endif
   {
   bool copy_pending = false, trim_pending = false, scrape_pending = false;
   ides_ = ides; odes_ = odes;
+#ifdef DDRESCUE_USE_DVDREAD
+  idvd_ = idvd;
+  dvd_ = dvd;
+
+  if (dvd_ && idvd_) {
+    idvd_nblocks = DVDGetMaxLB(idvd_) + 1;
+  }
+#endif
 
   if( non_tried_size ) copy_pending = trim_pending = scrape_pending = true;
   if( non_trimmed_size )              trim_pending = scrape_pending = true;

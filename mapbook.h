@@ -165,7 +165,7 @@ const char * format_time( const long t, const bool low_prec = false );
 int readblock( const int fd, uint8_t * const buf, const int size,
                const long long pos );
 #ifdef DDRESCUE_USE_DVDREAD
-int readblock_dvdread( dvd_reader_t *dvd, uint8_t * const buf, const int size,
+int readblock_dvdread( dvd_reader_t *dvd, uint32_t dvd_blocks, uint8_t * const buf, const int size,
                        const long long pos );
 #endif
 int writeblock( const int fd, const uint8_t * const buf, const int size,

@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 #include <stdint.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include "block.h"
@@ -75,28 +76,56 @@ int readblock( const int fd, uint8_t * const buf, const int size,
   return sz;
   }
 
+// #define READBLOCK_DVDREAD_DEBUG
+
 #ifdef DDRESCUE_USE_DVDREAD
 // Returns the number of bytes really read.
 // If (returned value < size) and (errno == 0), means EOF was reached.
 //
-int readblock_dvdread( dvd_reader_t *dvd, uint8_t * const buf, const int size,
+int readblock_dvdread( dvd_reader_t *dvd, uint32_t dvd_blocks, uint8_t * const buf, const int size,
                        const long long pos ) {
   uint32_t lb, n, n_read;
   /* Reset errno */
   errno = 0;
   /* We can only seek to LBs */
   if (pos % 2048 != 0) {
+#ifdef READBLOCK_DVDREAD_DEBUG
+    printf("readblock_dvdread(): pos %lld not a multiple of block size (size %d)\n",
+           pos, size);
+#endif
     errno = EINVAL;
     return -1;
   }
   /* We can only read an integer number of blocks */
   if (size % 2048 != 0) {
+#ifdef READBLOCK_DVDREAD_DEBUG
+    printf("readblock_dvdread(): size %d not a multiple of block size (pos %lld)\n",
+           size, pos);
+#endif
     errno = EINVAL;
     return -1;
   }
   lb = pos / 2048;
   n = size / 2048;
   n_read = DVDReadRawBlocks(dvd, buf, lb, n, 1);
+  if (n_read < n) {
+    if (lb + n_read < dvd_blocks) {
+      /* Set errno so caller knows this isn't EOF */
+      errno = EIO;
+    }
+    /* else EOF */
+  }
+#ifdef READBLOCK_DVDREAD_DEBUG
+  if (n_read == 0) {
+    if (errno) {
+      printf("readblock_dvdread(%u/%u): returning zero length but errno %d\n", lb, n, errno);
+    } else {
+      printf("readblock_dvdread(%u/%u): returning zero length/zero errno\n", lb, n);
+    }
+  } else {
+    printf("readblock_dvdread(%u/%u): returning %u / %d\n", lb, n, n_read, errno);
+  }
+#endif
   return n_read * 2048;
 }
 #endif

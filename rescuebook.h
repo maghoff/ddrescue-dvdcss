@@ -15,6 +15,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#ifdef DDRESCUE_USE_DVDREAD
+extern "C" {
+#include <dvdread/dvd_reader.h>
+}
+#endif
+
 class Sliding_average		// Calculates the average of the last N terms
   {
   unsigned index;
@@ -123,6 +129,11 @@ class Rescuebook : public Mapbook, public Rb_options
 					// 8 other (explained in final_msg)
   long errors;				// error areas found so far
   int ides_, odes_;			// input and output file descriptors
+#ifdef DDRESCUE_USE_DVDREAD
+  bool dvd_;
+  dvd_reader_t *idvd_;
+  uint32_t idvd_nblocks;
+#endif
   const bool synchronous_;
   long long voe_ipos;			// pos of last good sector read, or -1
   uint8_t * const voe_buf;		// copy of last good sector read
@@ -155,6 +166,9 @@ class Rescuebook : public Mapbook, public Rb_options
                        int & error_size, const char * const msg,
                        const Status curr_st, const bool forward,
                        const Sblock::Status st = Sblock::bad_sector );
+#ifdef DDRESCUE_USE_DVDREAD
+  int do_rescue_internal( bool dvd, const int ides, dvd_reader_t *idvd, const int odes );
+#endif
   bool reopen_infile();
   int copy_non_tried();
   int fcopy_non_tried( const char * const msg, const int pass );
@@ -176,4 +190,7 @@ public:
   ~Rescuebook() { delete[] voe_buf; }
 
   int do_rescue( const int ides, const int odes );
+#ifdef DDRESCUE_USE_DVDREAD
+  int do_dvd_rescue( dvd_reader_t *idvd, const int odes );
+#endif
   };
