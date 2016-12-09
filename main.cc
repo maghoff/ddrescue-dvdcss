@@ -123,8 +123,11 @@ void show_help( const int cluster, const int hardbs, const int skipbs )
                "  -y, --synchronous              use synchronous writes for output file\n"
                "  -Z, --max-read-rate=<bytes>    maximum read rate in bytes/s\n"
                "      --ask                      ask for confirmation before starting the copy\n"
-               "      --cpass=<n>[,<n>]          select what copying pass(es) to run\n"
-               "      --log-rates=<file>         log rates and error sizes in file\n"
+               "      --cpass=<n>[,<n>]          select what copying pass(es) to run\n" );
+#ifdef DDRESCUE_USE_DVDREAD
+  std::printf( "      --dvd                      use libdvdread/libdvdcss to read and decrypt device\n" );
+#endif
+  std::printf( "      --log-rates=<file>         log rates and error sizes in file\n"
                "      --log-reads=<file>         log all read operations in file\n"
                "      --pause=<interval>         time to wait between passes [0]\n"
                "Numbers may be in decimal, hexadecimal or octal, and may be followed by a\n"
@@ -619,7 +622,7 @@ bool Rescuebook::reopen_infile()
 
 int main( const int argc, const char * const argv[] )
   {
-  enum Optcode { opt_ask = 256, opt_cpa, opt_pau, opt_rat, opt_rea };
+  enum Optcode { opt_ask = 256, opt_dvd, opt_cpa, opt_pau, opt_rat, opt_rea };
   long long ipos = 0;
   long long opos = -1;
   long long max_size = -1;
@@ -636,6 +639,7 @@ int main( const int argc, const char * const argv[] )
   Fb_options fb_opts;
   Rb_options rb_opts;
   bool ask = false;
+  bool dvd = false;
   bool force = false;
   bool loose = false;
   bool preallocate = false;
@@ -694,6 +698,7 @@ int main( const int argc, const char * const argv[] )
     { 'y', "synchronous",         Arg_parser::no  },
     { 'Z', "max-read-rate",       Arg_parser::yes },
     { opt_ask, "ask",             Arg_parser::no  },
+    { opt_dvd, "dvd",             Arg_parser::no  },
     { opt_cpa, "cpass",           Arg_parser::yes },
     { opt_pau, "pause",           Arg_parser::yes },
     { opt_rat, "log-rates",       Arg_parser::yes },
@@ -762,6 +767,9 @@ int main( const int argc, const char * const argv[] )
       case 'y': synchronous = true; break;
       case 'Z': rb_opts.max_read_rate = getnum( ptr, hardbs, 1 ); break;
       case opt_ask: ask = true; break;
+#ifdef DDRESCUE_USE_DVDREAD
+      case opt_dvd: dvd = true; break;
+#endif
       case opt_cpa: parse_cpass( arg, rb_opts ); break;
       case opt_pau: rb_opts.pause = parse_time_interval( ptr ); break;
       case opt_rat: if( rate_logger.set_filename( ptr ) ) break;
