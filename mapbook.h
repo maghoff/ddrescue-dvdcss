@@ -15,6 +15,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#ifdef DDRESCUE_USE_DVDREAD
+extern "C" {
+#include <dvdread/dvd_reader.h>
+}
+#endif
+
+
 class Mapbook : public Mapfile
   {
   const long long offset_;		// outfile offset (opos - ipos);
@@ -157,6 +164,10 @@ const char * format_time( const long t, const bool low_prec = false );
 //
 int readblock( const int fd, uint8_t * const buf, const int size,
                const long long pos );
+#ifdef DDRESCUE_USE_DVDREAD
+int readblock_dvdread( dvd_reader_t *dvd, uint8_t * const buf, const int size,
+                       const long long pos );
+#endif
 int writeblock( const int fd, const uint8_t * const buf, const int size,
                 const long long pos );
 bool interrupted();

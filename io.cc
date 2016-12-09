@@ -28,6 +28,12 @@
 #include "block.h"
 #include "mapbook.h"
 
+#ifdef DDRESCUE_USE_DVDREAD
+extern "C" {
+#include <dvdread/dvd_reader.h>
+}
+#endif
+
 
 namespace {
 
@@ -68,6 +74,32 @@ int readblock( const int fd, uint8_t * const buf, const int size,
       }
   return sz;
   }
+
+#ifdef DDRESCUE_USE_DVDREAD
+// Returns the number of bytes really read.
+// If (returned value < size) and (errno == 0), means EOF was reached.
+//
+int readblock_dvdread( dvd_reader_t *dvd, uint8_t * const buf, const int size,
+                       const long long pos ) {
+  uint32_t lb, n, n_read;
+  /* Reset errno */
+  errno = 0;
+  /* We can only seek to LBs */
+  if (pos % 2048 != 0) {
+    errno = EINVAL;
+    return -1;
+  }
+  /* We can only read an integer number of blocks */
+  if (size % 2048 != 0) {
+    errno = EINVAL;
+    return -1;
+  }
+  lb = pos / 2048;
+  n = size / 2048;
+  n_read = DVDReadRawBlocks(dvd, buf, lb, n, 1);
+  return n_read * 2048;
+}
+#endif
 
 
 // Returns the number of bytes really written.
