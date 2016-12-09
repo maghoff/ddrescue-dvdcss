@@ -20,13 +20,13 @@ logobjs = arg_parser.o block.o mapfile.o ddrescuelog.o
 all : $(progname) ddrescuelog
 
 $(progname) : $(objs)
-	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $(objs)
+	$(CXX) $(LDFLAGS) $(DVDREAD_LIBS) $(CXXFLAGS) -o $@ $(objs)
 
 ddrescuelog : $(logobjs)
 	$(CXX) $(LDFLAGS) $(CXXFLAGS) -o $@ $(logobjs)
 
 static_$(progname) : $(objs)
-	$(CXX) $(LDFLAGS) $(CXXFLAGS) -static -o $@ $(objs)
+	$(CXX) $(LDFLAGS) $(DVDREAD_LIBS) $(CXXFLAGS) -static -o $@ $(objs)
 
 non_posix.o : non_posix.cc
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(use_non_posix) -c -o $@ $<
@@ -38,7 +38,7 @@ ddrescuelog.o : ddrescuelog.cc
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DPROGVERSION=\"$(pkgversion)\" -c -o $@ $<
 
 %.o : %.cc
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DVDREAD_CFLAGS) -c -o $@ $<
 
 $(objs)       : Makefile
 $(ddobjs)     : block.h mapbook.h

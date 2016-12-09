@@ -21,10 +21,12 @@ bindir='$(exec_prefix)/bin'
 datarootdir='$(prefix)/share'
 infodir='$(datarootdir)/info'
 mandir='$(datarootdir)/man'
+use_libdvdread=no
 CXX=g++
 CPPFLAGS=
 CXXFLAGS='-Wall -W -O2'
 LDFLAGS=
+PKG_CONFIG=pkg-config
 
 # checking whether we are using GNU C++.
 ${CXX} --version > /dev/null 2>&1
@@ -66,10 +68,14 @@ while [ $# != 0 ] ; do
 		echo "  --infodir=DIR         info files directory [${infodir}]"
 		echo "  --mandir=DIR          man pages directory [${mandir}]"
 		echo "  --enable-non-posix    enable non-portable code and ioctl's [disable]"
+    echo "  --enable-libdvdread   enable linking libdvdread to use its CSS code [disable]"
 		echo "  CXX=COMPILER          C++ compiler to use [${CXX}]"
 		echo "  CPPFLAGS=OPTIONS      command line options for the preprocessor [${CPPFLAGS}]"
 		echo "  CXXFLAGS=OPTIONS      command line options for the C++ compiler [${CXXFLAGS}]"
 		echo "  LDFLAGS=OPTIONS       command line options for the linker [${LDFLAGS}]"
+    echo "  PKG_CONFIG=PATH       path to pkg-config binary"
+    echo "  PKG_CONFIG_LIBDIR=DIR arch-specific search directory for pkg-config"
+    echo "  PKG_CONFIG_PATH=DIR   arch-independent search directory for pkg-config"
 		echo
 		exit 0 ;;
 	--version | -V)
@@ -92,11 +98,15 @@ while [ $# != 0 ] ; do
 	--mandir=*)            mandir=${optarg} ;;
 	--no-create)              no_create=yes ;;
 	--enable-non-posix) use_non_posix="-DUSE_NON_POSIX" ;;
+  --enable-libdvdread) use_libdvdread=yes ;;
 
 	CXX=*)           CXX=${optarg} ;;
 	CPPFLAGS=*) CPPFLAGS=${optarg} ;;
 	CXXFLAGS=*) CXXFLAGS=${optarg} ;;
 	LDFLAGS=*)   LDFLAGS=${optarg} ;;
+  PKG_CONFIG=*) PKG_CONFIG=${optarg} ;;
+  PKG_CONFIG_LIBDIR=*) PKG_CONFIG_LIBDIR=${optarg} ;;
+  PKG_CONFIG_PATH=*) PKG_CONFIG_PATH=${optarg} ;;
 
 	--*)
 		echo "configure: WARNING: unrecognized option: '${option}'" 1>&2 ;;
@@ -115,6 +125,27 @@ while [ $# != 0 ] ; do
 		fi
 	fi
 done
+
+# Check libdvdread stuff
+if [ "${use_libdvdread}" = yes ] ; then
+  $PKG_CONFIG dvdread
+  if [ $? == 0 ] ; then
+    DVDREAD_CFLAGS=`$PKG_CONFIG --cflags dvdread`
+    DVDREAD_LIBS=`$PKG_CONFIG --libs dvdread`
+# Add a -D so we know we have it
+    DVDREAD_CFLAGS="${DVDREAD_CFLAGS} -DDDRESCUE_USE_DVDREAD"
+  else
+    echo "Couldn't pkg-config dvdread; disabling it"
+    DVDREAD_CFLAGS=
+    DVDREAD_LIBS=
+  fi
+else
+  DVDREAD_CFLAGS=
+  DVDREAD_LIBS=
+fi
+
+# echo "DVDREAD_CFLAGS=${DVDREAD_CFLAGS}"
+# echo "DVDREAD_LIBS=${DVDREAD_LIBS}"
 
 # Find the source files, if location was not specified.
 srcdirtext=
@@ -166,6 +197,8 @@ echo "CXX = ${CXX}"
 echo "CPPFLAGS = ${CPPFLAGS}"
 echo "CXXFLAGS = ${CXXFLAGS}"
 echo "LDFLAGS = ${LDFLAGS}"
+echo "DVDREAD_CFLAGS = ${DVDREAD_CFLAGS}"
+echo "DVDREAD_LIBS = ${DVDREAD_LIBS}"
 rm -f Makefile
 cat > Makefile << EOF
 # Makefile for GNU ddrescue - Data recovery tool
@@ -190,6 +223,8 @@ CXX = ${CXX}
 CPPFLAGS = ${CPPFLAGS}
 CXXFLAGS = ${CXXFLAGS}
 LDFLAGS = ${LDFLAGS}
+DVDREAD_CFLAGS = ${DVDREAD_CFLAGS}
+DVDREAD_LIBS = ${DVDREAD_LIBS}
 EOF
 cat "${srcdir}/Makefile.in" >> Makefile
 
