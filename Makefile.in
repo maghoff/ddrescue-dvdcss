@@ -29,10 +29,10 @@ static_$(progname) : $(objs)
 	$(CXX) $(LDFLAGS) $(DVDREAD_LIBS) $(CXXFLAGS) -static -o $@ $(objs)
 
 non_posix.o : non_posix.cc
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(use_non_posix) -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DVDREAD_CFLAGS) $(use_non_posix) -c -o $@ $<
 
 main.o : main.cc
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DPROGVERSION=\"$(pkgversion)\" -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DVDREAD_CFLAGS) -DPROGVERSION=\"$(pkgversion)\" -c -o $@ $<
 
 ddrescuelog.o : ddrescuelog.cc
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DPROGVERSION=\"$(pkgversion)\" -c -o $@ $<
