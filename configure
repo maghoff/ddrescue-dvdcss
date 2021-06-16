@@ -127,22 +127,31 @@ while [ $# != 0 ] ; do
 done
 
 # Check libdvdread stuff
-if [ "${use_libdvdread}" = yes ] ; then
-  $PKG_CONFIG dvdread
-  if [ $? == 0 ] ; then
-    DVDREAD_CFLAGS=`$PKG_CONFIG --cflags dvdread`
-    DVDREAD_LIBS=`$PKG_CONFIG --libs dvdread`
-# Add a -D so we know we have it
-    DVDREAD_CFLAGS="${DVDREAD_CFLAGS} -DDDRESCUE_USE_DVDREAD"
-  else
-    echo "Couldn't pkg-config dvdread; disabling it"
-    DVDREAD_CFLAGS=
-    DVDREAD_LIBS=
-  fi
-else
-  DVDREAD_CFLAGS=
-  DVDREAD_LIBS=
-fi
+$PKG_CONFIG libdvdcss || (echo "Missing libdvdcss"; exit 1)
+
+DVDREAD_CFLAGS=`$PKG_CONFIG --cflags libdvdcss`
+DVDREAD_LIBS=`$PKG_CONFIG --libs libdvdcss`
+
+DVDREAD_CFLAGS="\
+	$DVDREAD_CFLAGS \
+	-fpermissive \
+	-Ilibdvdread/src \
+	-DDDRESCUE_USE_DVDREAD"
+
+DVDREAD_LIBS="\
+	-fpermissive \
+	libdvdread/src/bitreader.c \
+	libdvdread/src/dvd_input.c \
+	libdvdread/src/dvd_reader.c \
+	libdvdread/src/dvd_udf.c \
+	libdvdread/src/ifo_print.c \
+	libdvdread/src/ifo_read.c \
+	libdvdread/src/md5.c \
+	libdvdread/src/nav_print.c \
+	libdvdread/src/nav_read.c \
+	$DVDREAD_LIBS \
+	-Ilibdvdread/src \
+	"
 
 # echo "DVDREAD_CFLAGS=${DVDREAD_CFLAGS}"
 # echo "DVDREAD_LIBS=${DVDREAD_LIBS}"
