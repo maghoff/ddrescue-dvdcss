@@ -1,3 +1,20 @@
+Preface by Magnus Hovland Hoff
+
+This is a fork of https://github.com/puellavulnerata/ddrescue-dvdcss
+
+That fork adds support for stripping CSS from DVDs while reading them.
+It relies on another fork of libdvdread. In my fork, I have copied that
+libdvdread into the repository to make building easier. I do not have
+upstreaming as a goal.
+
+Dependencies: libdvdcss
+
+To build: ./configure && make
+
+Original description below.
+
+----
+
 Description
 
 GNU ddrescue is a data recovery tool. It copies data from one file or
